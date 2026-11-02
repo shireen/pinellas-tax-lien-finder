@@ -1,0 +1,59 @@
+name: Daily tax deed report
+
+on:
+  schedule:
+    # 23:32 UTC = 5:32 PM CST / 6:32 PM CDT
+    - cron: "32 23 * * *"
+  workflow_dispatch:
+    inputs:
+      send_email:
+        description: "Send the email"
+        type: boolean
+        default: true
+
+concurrency: daily-report
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Restore last run (for "what's new")
+        uses: actions/cache/restore@v4
+        with:
+          path: state
+          key: state-${{ github.run_id }}
+          restore-keys: state-
+
+      - name: Build and send report
+        env:
+          HOME_ADDRESS: ${{ secrets.HOME_ADDRESS }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          RADIUS_MILES: ${{ vars.RADIUS_MILES || '5' }}
+          MIN_ELEVATION_FT: ${{ vars.MIN_ELEVATION_FT || '20' }}
+          MAX_BID_RATIO: ${{ vars.MAX_BID_RATIO || '0.75' }}
+          MAX_FLOOD_FACTOR: ${{ vars.MAX_FLOOD_FACTOR || '1' }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.send_email }}" != "true" ]; then
+            python -m taxlien.main --no-email
+          else
+            python -m taxlien.main
+          fi
+
+      - name: Save state
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: state
+          key: state-${{ github.run_id }}
