@@ -32,7 +32,11 @@ def fema_zone(s, lon: float, lat: float):
 
 
 def flood_factor(s, address: str, lon: float, lat: float):
-    """Return (score 1-10, url) from First Street, or (None, None)."""
+    """Return (score 1-10, url) from First Street, or (None, None).
+
+    The score lives in a `"flood":{"floodFactor":N,...}` JSON blob embedded in the
+    property page's React server-components payload.
+    """
     try:
         res = get(s, f"{FS}/api/ac", params={"searchTerm": address, "lat": lat, "lng": lon}).json()
         prop = next((x for x in res if x.get("entity") == "property"), None)
@@ -40,7 +44,8 @@ def flood_factor(s, address: str, lon: float, lat: float):
             return None, None
         url = f"{FS}/property/address/{prop['fsid']}_fsid/0"
         html = get(s, url).text
-        m = re.search(r"(\d+)/10(?:<!-- -->)?\s*Flood Factor", html)
+        # Quotes are backslash-escaped because the JSON lives inside a JS string.
+        m = re.search(r'floodFactor\\?"\s*:\s*(\d+)', html)
         return (int(m.group(1)) if m else None), url
     except Exception:  # noqa: BLE001
         return None, None

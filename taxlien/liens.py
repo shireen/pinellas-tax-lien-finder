@@ -5,6 +5,8 @@ This is an automated first pass, not a title search. It looks for:
   * State of Florida / Dept of Revenue liens - flagged for a title attorney to confirm
   * mortgages, lis pendens and private judgments - generally wiped out by the tax deed
 """
+from __future__ import annotations
+
 import datetime as dt
 import re
 

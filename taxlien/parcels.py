@@ -57,11 +57,11 @@ def pcpao_details(s, strap_id: str) -> dict:
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n\s*\n+", "\n", text)
     out = {}
-    i = text.find("Final Values")
-    if i >= 0:
-        vals = re.findall(r"\$[\d,]+", text[i:i + 400])
-        if vals:
-            out["market_value"] = int(vals[0].replace("$", "").replace(",", ""))
+    # The PCPAO page lays out the current-year value table as 5 header labels,
+    # then the year, then 5 dollar amounts; the first $ after "Just/Market Value" is it.
+    m = re.search(r"Just/Market Value\b.{0,500}?\$(\d[\d,]+)", text, re.DOTALL)
+    if m:
+        out["market_value"] = int(m.group(1).replace(",", ""))
     m = re.search(r"Property Use\n ?([^\n]+)", text)
     out["use"] = m.group(1).strip() if m else ""
     m = re.search(r"Year Built[^\d]{0,40}(\d{4})", text)
