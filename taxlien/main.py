@@ -1,6 +1,7 @@
 """Daily Pinellas tax deed report: python -m taxlien.main [--no-email]"""
 import argparse
 import json
+import os
 import sys
 import time
 
@@ -136,6 +137,11 @@ def run(send_email: bool = True) -> int:
 
     if send_email:
         emailer.send(cfg, subject, html)
+    # Preserve the comparison baseline after a complete report, even when its
+    # health status is nonzero. Do not mark generation complete after an email error.
+    if os.environ.get("GITHUB_OUTPUT"):
+        with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+            output.write("report_generated=true\n")
     incomplete = sum(not p.get("liens", {}).get("checked") for p in in_range)
     if incomplete:
         print(f"INCOMPLETE: {incomplete} lien checks require manual review; report written.")

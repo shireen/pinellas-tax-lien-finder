@@ -124,7 +124,7 @@ class Clerk:
         if not BeautifulSoup(selected.text, "html.parser").select_one("#RsltsGrid"):
             raise ClerkSearchError("name_selection", "unexpected_response")
         self._request(get, "/Search/PartialGrid", "partial_grid")
-        rows, expected, seen_pages = [], None, set()
+        rows, expected, seen_pages, seen_records = [], None, set(), set()
         for page in range(1, self.MAX_PAGES + 1):
             response = self._request(post, "/Search/GridResults", "grid_results",
                                      data={"page": page, "size": self.PAGE_SIZE}, headers=XHR)
@@ -145,6 +145,13 @@ class Clerk:
             if (signature in seen_pages or len(rows) + len(batch) > expected
                     or (not batch and len(rows) < expected)):
                 raise ClerkSearchError("pagination", "incomplete_results")
+            # A server that repeats/overlaps pages must not satisfy the total by
+            # counting the same records twice. Ignore the display-only row GUID.
+            fingerprints = {json.dumps({k: v for k, v in x.items() if k != "GUID"}, sort_keys=True)
+                            for x in batch if isinstance(x, dict)}
+            if seen_records.intersection(fingerprints):
+                raise ClerkSearchError("pagination", "incomplete_results")
+            seen_records.update(fingerprints)
             seen_pages.add(signature)
             rows.extend(self._parse_record(x) for x in batch)
             if len(rows) == expected:
@@ -181,7 +188,8 @@ def owner_search_name(owner1: str) -> str | None:
     name = re.sub(r"[,.]", " ", name)
     words = name.split()
     # last name + first name is precise enough; companies keep their full name
-    return " ".join(words[:2] if "LLC" not in words and "INC" not in words else words) or None
+    business = {"LLC", "INC", "CORP", "CORPORATION", "LTD", "LP", "LLP", "CO", "COMPANY", "ASSOCIATION"}
+    return " ".join(words if business.intersection(words) else words[:2]) or None
 
 
 def _legal_tokens(legal: str) -> list[str]:

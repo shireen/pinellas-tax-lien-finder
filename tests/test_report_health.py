@@ -2,6 +2,7 @@
 import contextlib
 import io
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -114,9 +115,12 @@ class ReportHealthTests(unittest.TestCase):
             if failure:
                 clerk.search_name.side_effect = RuntimeError("PRIVATE OWNER PRIVATE HOME")
             send = stack.enter_context(patch("taxlien.main.emailer.send"))
+            outputs = Path(tmp) / "github-output"
+            stack.enter_context(patch.dict(os.environ, {"GITHUB_OUTPUT": str(outputs)}))
             stdout = io.StringIO()
             with contextlib.redirect_stdout(stdout):
                 status = main.run(send_email=send_email)
+            self.assertEqual(outputs.read_text(), "report_generated=true\n")
             self.assertTrue(cfg.output_html.exists())
             self.assertTrue(cfg.state_file.exists())
             if send_email:
