@@ -54,6 +54,8 @@ def _table(props):
 
 
 def build(cfg, data, props, changes) -> tuple[str, str]:
+    unchecked = sum(not p.get("liens", {}).get("checked") for p in props)
+    completed = len(props) - unchecked
     stars = [p for p in props if p["star"]]
     rest = [p for p in props if not p["star"]]
     today = dt.date.today()
@@ -61,6 +63,18 @@ def build(cfg, data, props, changes) -> tuple[str, str]:
     subject = (f"Pinellas Tax Deed Auction — {today:%m/%d/%Y} — "
                f"{'⭐ ' + str(len(stars)) + ' Picks, ' if stars else ''}{len(props)} Properties Within "
                f"{cfg.radius_miles:g} mi")
+    if unchecked:
+        subject = "INCOMPLETE LIEN CHECKS — " + subject
+        coverage = (f"<p style='background:#fff3cd;padding:8px'><b>Incomplete lien coverage:</b> "
+                    f"{completed} of {len(props)} checks completed; {unchecked} unchecked. "
+                    "Unchecked properties are not cleared of liens and cannot earn a ⭐. "
+                    "Review their Clerk records manually before drawing conclusions.</p>")
+        no_picks = "<p>No verified ⭐ picks yet. Incomplete lien checks prevent a complete assessment.</p>"
+    else:
+        coverage = (f"<p><b>Lien coverage:</b> {completed} of {len(props)} checks completed; "
+                    "0 unchecked. This is an automated owner-name screen, not a title search.</p>")
+        no_picks = ("<p>No properties are in range today.</p>" if not props else
+                    "<p>No properties meet every ⭐ rule today.</p>")
     new_html = "<br>".join(escape(c) for c in changes) if changes else "No changes."
     picks = "".join(
         f"<li><b>{escape(p['address'])}</b> ({p['distance_mi']:.1f} mi): bid {p['bid_ratio'] * 100:.0f}% of value, "
@@ -70,7 +84,8 @@ def build(cfg, data, props, changes) -> tuple[str, str]:
 <p>Pinellas County tax deed auctions within <b>{cfg.radius_miles:g} miles</b> of the home address.</p>
 <p style="background:#eef6ff;padding:8px;border-left:4px solid #3b82f6"><b>What's new since the last run:</b><br>{new_html}</p>
 <p><b>Summary:</b> upcoming auctions: {dates}. <b>{len(props)}</b> properties are in range; <b>{len(stars)}</b> earn a ⭐.</p>
-{"<h3>🔍 ⭐ Picks</h3><ul>" + picks + "</ul>" if stars else "<p>No properties meet every ⭐ rule today.</p>"}
+{coverage}
+{"<h3>🔍 ⭐ Picks</h3><ul>" + picks + "</ul>" if stars else no_picks}
 {"<h3>⭐ Picks</h3>" + _table(stars) if stars else ""}
 <h3>📋 All Properties Within {cfg.radius_miles:g} Miles</h3>{_table(stars + rest)}
 <p style="font-size:12px;color:#555">

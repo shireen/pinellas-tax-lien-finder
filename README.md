@@ -47,6 +47,19 @@ python -m taxlien.main --no-email # writes out/report.html
 python -m taxlien.main            # builds and emails it
 ```
 
+### Incomplete lien checks
+
+A failed Clerk search or unsearchable owner name is **unchecked**, not a zero-lien result.
+The report shows completed and unchecked counts and marks its subject **INCOMPLETE LIEN CHECKS**
+when any check is incomplete. Unchecked properties cannot earn a star. Diagnostics use only a
+safe stage and HTTP status when available, never the owner's name, request URL or response body.
+The HTML report and comparison state are still written, and the normal email path still runs
+unless `--no-email` is supplied. The command then exits with status **1** if any lien check is
+incomplete, so scheduled runs cannot silently report success. Status **0** means all in-range
+lien checks completed (or no properties were in range), not that a title search was performed.
+
+Run the offline regression tests with `python -m unittest discover -s tests -v`.
+
 ## Run it daily on GitHub Actions
 
 The workflow in `.github/workflows/daily-report.yml` runs every day at 23:32 UTC (5:32 PM Central in winter, 6:32 PM in summer). You can also start it by hand from the **Actions** tab.
