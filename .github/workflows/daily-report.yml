@@ -35,6 +35,7 @@ jobs:
           restore-keys: state-
 
       - name: Build and send report
+        id: build
         env:
           HOME_ADDRESS: ${{ secrets.HOME_ADDRESS }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
@@ -52,7 +53,7 @@ jobs:
           fi
 
       - name: Save state
-        if: success()
+        if: ${{ !cancelled() && steps.build.outputs.report_generated == 'true' }}
         uses: actions/cache/save@v4
         with:
           path: state

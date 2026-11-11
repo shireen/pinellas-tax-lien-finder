@@ -1,6 +1,7 @@
 """Daily Pinellas tax deed report: python -m taxlien.main [--no-email]"""
 import argparse
 import json
+import os
 import sys
 import time
 
@@ -46,6 +47,40 @@ def diff(prev: dict, props: list[dict], data: dict) -> list[str]:
     return out or ["No changes."]
 
 
+def _clerk_failure_reason(error: Exception) -> str:
+    """Only expose structured, non-identifying diagnostics, never exception text."""
+    stages = {"disclaimer", "search_form", "name_search", "name_selection", "partial_grid",
+              "grid_results", "pagination", "parse", "search", "bootstrap", "results"}
+    stage = getattr(error, "stage", None)
+    status = getattr(error, "status_code", None)
+    parts = [f"stage: {stage}" if isinstance(stage, str) and stage in stages else "stage: Clerk search"]
+    if type(status) is int and 100 <= status <= 599:
+        parts.append(f"HTTP {status}")
+    code = getattr(error, "code", None)
+    if code in {"access_denied", "http_error", "network_error", "unexpected_response",
+                "incomplete_results", "invalid_record"}:
+        parts.append(code.replace("_", " "))
+    return "; ".join(parts)
+
+
+def check_liens(clerk, owner: str, legal: str) -> dict:
+    """Keep incomplete checks distinct from a completed zero-result screen."""
+    name = liens.owner_search_name(owner)
+    if not name:
+        return {"checked": False, "active_gov_liens": None, "gov_liens": None,
+                "failure_reason": "owner name unsearchable",
+                "notes": "⚠️ Lien check incomplete: owner name unsearchable; check Clerk manually"}
+    try:
+        return liens.screen(clerk.search_name(name), legal)
+    except Exception as error:  # noqa: BLE001
+        reason = _clerk_failure_reason(error)
+        return {"checked": False, "active_gov_liens": None, "gov_liens": None,
+                "failure_reason": reason,
+                "notes": f"⚠️ Lien check incomplete ({reason}); check Clerk manually"}
+    finally:
+        time.sleep(1)
+
+
 def run(send_email: bool = True) -> int:
     cfg = Config.from_env()
     s = session()
@@ -80,18 +115,7 @@ def run(send_email: bool = True) -> int:
             p["flood_factor"], p["flood_factor_url"] = flood.flood_factor(s, full, p["lon"], p["lat"])
         else:
             p["flood_factor"], p["flood_factor_url"] = None, None
-        name = liens.owner_search_name(p["owner"])
-        if name:
-            try:
-                rows = clerk.search_name(name)
-                p["liens"] = liens.screen(rows, p.get("legal") or p["gis_legal"])
-            except Exception as e:  # noqa: BLE001
-                p["liens"] = {"checked": False, "active_gov_liens": None, "gov_liens": None,
-                              "notes": f"⚠️ Clerk search failed ({type(e).__name__}) — check manually"}
-            time.sleep(1)
-        else:
-            p["liens"] = {"checked": False, "active_gov_liens": None, "gov_liens": None,
-                          "notes": "⚠️ Check Clerk (owner is a trust or unsearchable name)"}
+        p["liens"] = check_liens(clerk, p["owner"], p.get("legal") or p["gis_legal"])
         p["star"] = is_star(p, cfg)
 
     print(f"{sum(p['star'] for p in in_range)} star picks")
@@ -113,6 +137,15 @@ def run(send_email: bool = True) -> int:
 
     if send_email:
         emailer.send(cfg, subject, html)
+    # Preserve the comparison baseline after a complete report, even when its
+    # health status is nonzero. Do not mark generation complete after an email error.
+    if os.environ.get("GITHUB_OUTPUT"):
+        with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+            output.write("report_generated=true\n")
+    incomplete = sum(not p.get("liens", {}).get("checked") for p in in_range)
+    if incomplete:
+        print(f"INCOMPLETE: {incomplete} lien checks require manual review; report written.")
+        return 1
     return 0
 
 
